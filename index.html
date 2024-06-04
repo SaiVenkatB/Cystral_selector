@@ -20,7 +20,7 @@
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             padding: 20px;
-            max-width: 500px;
+            max-width: 600px;
             width: 90%;
             transition: transform 0.3s, box-shadow 0.3s;
         }
@@ -28,7 +28,7 @@
             transform: translateY(-10px);
             box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
         }
-        h1 {
+        h1, h2 {
             text-align: center;
             color: #333;
             margin-bottom: 20px;
@@ -70,7 +70,7 @@
         input[type="submit"]:hover {
             background-color: #45a049;
         }
-        .result {
+        .result, .circuit-values {
             display: none;
             background-color: #e6ffe6;
             border: 1px solid #b3ffb3;
@@ -82,6 +82,48 @@
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
+        }
+        .circuit-diagram {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .diagram div {
+            margin: 5px 0;
+            position: relative;
+        }
+        .diagram span {
+            display: block;
+        }
+        .voltage, .ground, .osc-out, .osc-in, .rext, .crystal, .rf {
+            border: 1px solid #333;
+            padding: 5px;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            width: fit-content;
+        }
+        .voltage, .ground {
+            width: 50px;
+            text-align: center;
+        }
+        .line {
+            height: 30px;
+            width: 2px;
+            background-color: #333;
+            position: absolute;
+            left: 50%;
+        }
+        .horizontal-line {
+            width: 50px;
+            height: 2px;
+            background-color: #333;
+            position: absolute;
+            top: 50%;
+            left: 50%;
         }
         @media (max-width: 600px) {
             .container {
@@ -114,7 +156,27 @@
             <input type="number" id="CL" name="CL" step="any" required>
             <input type="submit" value="Calculate">
         </form>
+        <div id="circuit-values" class="circuit-values">
+            <p>Calculated Load Capacitance (C1 and C2): <span id="C1-C2-values"></span> picofarads each</p>
+        </div>
         <div id="result" class="result"></div>
+        <div class="circuit-diagram">
+    <h2>STM32F412 Crystal Circuit Diagram</h2>
+    <pre id="circuit">
+        +---STM32---+
+        |           |
+           |           REXT
+        |           |
+                OSC_IN      OSC_OUT  
+         |           | 
+        +--Crystal--+
+        |           |
+              CL1         CL2    
+        |           |
+	   GND         GND 
+    </pre>
+    <p>Calculated Load Capacitance (CL1 and CL2): <span id="C1-C2-values"></span> picofarads each</p>
+</div>
     </div>
     <script>
         document.getElementById('calculator-form').addEventListener('submit', function(event) {
@@ -139,20 +201,76 @@
             // Calculate IQ using the formula DL = ESR * IQ^2
             const IQ = Math.sqrt(DL / ESR);
 
-            // Calculate REXT using the formula REXT = 1 / (2 * pi * f * CL2)
+            // Calculate REXT using the formula REXT = 1 / (2 * pi * f * CL2_f)
             const REXT = 1 / (2 * Math.PI * frequency * CL2_f);
 
             // Calculate Gmcrit using the formula
             const Gmcrit = 4 * ESR * Math.pow(2 * Math.PI * frequency, 2) * Math.pow(C0_f + CL_f, 2) * 1e6;
 
+            document.getElementById('C1-C2-values').textContent = (CL1_f * 1e12).toFixed(6);
+
             document.getElementById('result').innerHTML = `
                 <p>Critical Transconductance (Gmcrit): ${Gmcrit.toFixed(6)} microsiemens</p>
                 <p>Drive Current (IQ): ${IQ.toFixed(6)} amperes</p>
                 <p>External Resistor (REXT): ${REXT.toFixed(6)} ohms</p>
-                <p>Load Capacitance (CL1 and CL2): ${(CL1_f * 1e12).toFixed(6)} picofarads each</p>
+                 <p>Load Capacitance (CL1 and CL2): ${(CL1_f * 1e12).toFixed(6)} picofarads each</p>
             `;
             document.getElementById('result').style.display = 'block';
+            document.getElementById('circuit-values').style.display = 'block';
         });
+
+        const inputs = document.querySelectorAll('#C0, #ESR, #frequency, #DL, #CS, #CL');
+        inputs.forEach(input => {
+            input.addEventListener('input', function() {
+                const CS = parseFloat(document.getElementById('CS').value) || 0;
+                const CL = parseFloat(document.getElementById('CL').value) || 0;
+                const CS_f = CS * 1e-12;
+                const CL_f = CL * 1e-12;
+
+                if (CL > CS) {
+                    const CL1_f = 2 * (CL_f - CS_f);
+                    document.getElementById('C1-C2-values').textContent = (CL1_f * 1e12).toFixed(6);
+                    document.getElementById('circuit-values').style.display = 'block';
+                } else {
+                    document.getElementById('circuit-values').style.display = 'none';
+                }
+            });
+        });
+		document.getElementById('calculator-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    
+    // Get user input values
+    const C0 = parseFloat(document.getElementById('C0').value);
+    const ESR = parseFloat(document.getElementById('ESR').value);
+    const frequency = parseFloat(document.getElementById('frequency').value);
+    const DL = parseFloat(document.getElementById('DL').value);
+    const CS = parseFloat(document.getElementById('CS').value);
+    const CL = parseFloat(document.getElementById('CL').value);
+
+    // Calculate CL1 and CL2 using the derived formula
+    const CL1 = 2 * (CL - CS);
+    const CL2 = CL1;
+
+    // Update the circuit diagram with the calculated values
+    const circuitDiagram = `
+        +---STM32---+
+        |           |
+           |           REXT
+        |           |
+                OSC_IN      OSC_OUT  
+         |           | 
+        +--Crystal--+
+        |           |
+              CL1         CL2    
+              ${CL1.toFixed(2)} pF  ${CL2.toFixed(2)} pF    
+        |           |
+	   GND         GND 
+    `;
+    document.getElementById('circuit').textContent = circuitDiagram;
+
+    // Update the calculated CL1 and CL2 values in the span element
+    document.getElementById('C1-C2-values').textContent = `${CL1.toFixed(2)} / ${CL2.toFixed(2)} picofarads each`;
+});
     </script>
 </body>
 </html>
